@@ -111,14 +111,26 @@
     document.querySelectorAll('[data-floor]').forEach(b =>
       b.classList.toggle('active', Number(b.dataset.floor) === f));
 
-    const floor = availability.byFloor.find(x => x.floor === f);
-    if (!floor) return;
+    if (!availability || !Array.isArray(availability.byFloor) || !availability.byFloor.length) {
+      $('rooms').innerHTML = '<p class="muted" style="padding:8px">ไม่พบข้อมูลเตียงในระบบ — ตรวจสอบว่ารัน setupSpreadsheet ใน Apps Script แล้ว และ Beds tab ใน Sheet มี 100 rows</p>';
+      show($('roomPicker'), true);
+      show($('bedPicker'), false);
+      return;
+    }
+
+    const floor = availability.byFloor.find(x => Number(x.floor) === Number(f));
+    if (!floor) {
+      $('rooms').innerHTML = '<p class="muted" style="padding:8px">ไม่พบข้อมูลชั้น ' + f + ' (มีชั้น: ' + availability.byFloor.map(x => x.floor).join(', ') + ')</p>';
+      show($('roomPicker'), true);
+      show($('bedPicker'), false);
+      return;
+    }
 
     selectedRoom = null;
     selectedBedId = null;
     show($('bedPicker'), false);
 
-    if (f === 3) {
+    if (Number(f) === 3) {
       show($('roomPicker'), false);
       renderSingleRooms(floor);
       return;
