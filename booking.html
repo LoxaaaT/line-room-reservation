@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>จองเตียง · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>จองเตียง</h1>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <!-- ขั้นตอน 1: เลือกชั้น/ห้อง/เตียง -->
+  <div id="step1" style="display:none">
+    <div class="card">
+      <label>ชั้น</label>
+      <div class="seg">
+        <button type="button" data-floor="1" onclick="pickFloor(1)">ชั้น 1</button>
+        <button type="button" data-floor="2" onclick="pickFloor(2)">ชั้น 2</button>
+        <button type="button" data-floor="3" onclick="pickFloor(3)">ชั้น 3</button>
+      </div>
+
+      <div id="roomPicker" style="display:none">
+        <label style="margin-top:14px">ห้อง</label>
+        <div id="rooms" class="seg" style="flex-wrap:wrap"></div>
+      </div>
+
+      <div id="bedPicker" style="display:none">
+        <label style="margin-top:14px">เลือกเตียง (สีเขียว = ว่าง)</label>
+        <div id="beds" class="bed-grid"></div>
+        <p class="muted" style="margin-top:8px">
+          <span class="pill pill-free">ว่าง</span>
+          <span class="pill pill-occ">ไม่ว่าง</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ขั้นตอน 2: ฟอร์มคนไข้ -->
+  <div id="step2" style="display:none">
+    <div class="card">
+      <h2>เตียงที่เลือก: <span id="selectedBed"></span></h2>
+
+      <label>HN คนไข้</label>
+      <input id="patientHn" placeholder="เช่น HN-67-00123" autocomplete="off">
+
+      <label>ชื่อคนไข้</label>
+      <input id="patientName" placeholder="ชื่อ-นามสกุล" autocomplete="off">
+
+      <label>อาการ / ประเภท</label>
+      <textarea id="condition" placeholder="เช่น ไข้สูง ติดเชื้อทางเดินหายใจ"></textarea>
+
+      <label>ประเภทการจอง</label>
+      <div class="seg">
+        <button id="tFixed" type="button" class="active" onclick="pickType('fixed')">กำหนดวัน</button>
+        <button id="tOpen" type="button" onclick="pickType('open')">ไม่กำหนดออก</button>
+      </div>
+
+      <div id="checkoutBox">
+        <label>วันที่กำหนดออก</label>
+        <input id="checkOutDate" type="datetime-local">
+      </div>
+
+      <div id="bookMsg"></div>
+
+      <div class="row" style="margin-top:14px">
+        <button class="btn-secondary" type="button" onclick="goBack()">ย้อนกลับ</button>
+        <button id="bookBtn" class="btn-primary" type="button" onclick="submitBook()">ยืนยันจอง</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let availability = null;
+  let selectedFloor = null;
+  let selectedRoom = null;
+  let selectedBedId = null;
+  let bookingType = 'fixed';
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    const me = await rpc('getMe', { lineUserId: profile.userId });
+    if (!me.registered) {
+      document.querySelector('.wrap').innerHTML =
+        '<div class="alert alert-error">กรุณาลงทะเบียนก่อนจอง — <a href="/register">ลงทะเบียนที่นี่</a></div>';
+      show($('loader'), false);
+      return;
+    }
+    availability = await rpc('availability', {});
+    show($('loader'), false);
+    show($('step1'), true);
+
+    const fParam = qs('floor');
+    if (fParam) pickFloor(Number(fParam));
+
+    const tmr = new Date(Date.now() + 24*60*60*1000);
+    tmr.setSeconds(0, 0);
+    const z = n => String(n).padStart(2,'0');
+    $('checkOutDate').value = tmr.getFullYear() + '-' + z(tmr.getMonth()+1) + '-' + z(tmr.getDate())
+                            + 'T' + z(tmr.getHours()) + ':' + z(tmr.getMinutes());
+  }
+
+  function pickFloor(f) {
+    selectedFloor = f;
+    document.querySelectorAll('[data-floor]').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.floor) === f));
+
+    const floor = availability.byFloor.find(x => x.floor === f);
+    if (!floor) return;
+
+    selectedRoom = null;
+    selectedBedId = null;
+    show($('bedPicker'), false);
+
+    if (f === 3) {
+      show($('roomPicker'), false);
+      renderSingleRooms(floor);
+      return;
+    }
+
+    const roomsDiv = $('rooms');
+    roomsDiv.innerHTML = '';
+    floor.rooms.forEach(r => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.room = r.room;
+      btn.style.flex = '0 0 calc(25% - 4px)';
+      btn.style.margin = '2px';
+      btn.textContent = 'ห้อง ' + r.room + ' (' + r.free + '/' + r.all + ')';
+      btn.onclick = () => pickRoom(r);
+      roomsDiv.appendChild(btn);
+    });
+    show($('roomPicker'), true);
+  }
+
+  function pickRoom(r) {
+    selectedRoom = r;
+    $('rooms').querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', b.dataset.room === r.room));
+    renderBeds(r.beds);
+  }
+
+  function renderBeds(beds) {
+    const div = $('beds');
+    div.className = 'bed-grid';
+    div.innerHTML = '';
+    beds.forEach(b => {
+      const el = document.createElement('div');
+      el.className = 'bed ' + (b.free ? 'free' : 'occ');
+      el.textContent = String(b.bed_no || b.bed_id);
+      el.title = b.bed_id;
+      if (b.free) el.onclick = () => pickBed(b.bed_id, el);
+      div.appendChild(el);
+    });
+    show($('bedPicker'), true);
+  }
+
+  function renderSingleRooms(floor) {
+    const div = $('beds');
+    div.className = 'bed-grid single-grid';
+    div.innerHTML = '';
+    floor.rooms.forEach(r => {
+      const b = r.beds[0];
+      const el = document.createElement('div');
+      el.className = 'bed ' + (b.free ? 'free' : 'occ');
+      el.textContent = r.room;
+      el.title = b.bed_id;
+      if (b.free) el.onclick = () => pickBed(b.bed_id, el);
+      div.appendChild(el);
+    });
+    show($('bedPicker'), true);
+  }
+
+  function pickBed(bedId, el) {
+    selectedBedId = bedId;
+    $('beds').querySelectorAll('.bed').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    $('selectedBed').textContent = bedId;
+    show($('step1'), false);
+    show($('step2'), true);
+  }
+
+  function pickType(t) {
+    bookingType = t;
+    $('tFixed').classList.toggle('active', t === 'fixed');
+    $('tOpen').classList.toggle('active', t === 'open');
+    show($('checkoutBox'), t === 'fixed');
+  }
+
+  function goBack() {
+    show($('step2'), false);
+    show($('step1'), true);
+  }
+
+  async function submitBook() {
+    $('bookMsg').innerHTML = '';
+    const payload = {
+      lineUserId: LIFF_USER.userId,
+      bedId: selectedBedId,
+      patientHn: $('patientHn').value.trim(),
+      patientName: $('patientName').value.trim(),
+      condition: $('condition').value.trim(),
+      bookingType: bookingType,
+      checkOutPlanned: bookingType === 'fixed' ? toIso_($('checkOutDate').value) : ''
+    };
+    if (!payload.patientHn || !payload.patientName) {
+      $('bookMsg').appendChild(alertBox('กรุณากรอก HN และชื่อคนไข้'));
+      return;
+    }
+    $('bookBtn').disabled = true;
+    try {
+      const res = await rpc('book', payload);
+      if (res.ok) {
+        $('bookMsg').appendChild(alertBox('✓ จองสำเร็จ: ' + res.booking.bed_id, true));
+        setTimeout(() => { if (liff.isInClient()) liff.closeWindow(); }, 1500);
+      } else {
+        $('bookMsg').appendChild(alertBox('ไม่สำเร็จ: ' + res.error));
+      }
+    } catch (e) {
+      $('bookMsg').appendChild(alertBox('Error: ' + (e.message || e)));
+    } finally {
+      $('bookBtn').disabled = false;
+    }
+  }
+
+  function toIso_(localDt) {
+    if (!localDt) return '';
+    const d = new Date(localDt);
+    return fmtDateLocal(d);
+  }
+
+  start();
+</script>
+</body>
+</html>

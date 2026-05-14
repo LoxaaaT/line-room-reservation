@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>ตารางเตียงทั้งหมด · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>ตารางเตียงทั้งหมด</h1>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <div id="content" style="display:none">
+    <div class="card">
+      <div class="row" style="text-align:center">
+        <div>
+          <div class="muted">เตียงทั้งหมด</div>
+          <div style="font-size:24px;font-weight:700" id="totalAll">-</div>
+        </div>
+        <div>
+          <div class="muted">ว่าง</div>
+          <div style="font-size:24px;font-weight:700;color:#1d8a31" id="totalFree">-</div>
+        </div>
+        <div>
+          <div class="muted">ไม่ว่าง</div>
+          <div style="font-size:24px;font-weight:700;color:#c92a2a" id="totalOcc">-</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="muted" style="font-size:12px">
+      <span class="pill pill-free">ว่าง</span>
+      <span class="pill pill-occ">ไม่ว่าง</span>
+      <span class="pill pill-mine">ของคุณ</span>
+    </p>
+
+    <div id="floors"></div>
+  </div>
+</div>
+
+<script>
+  let bedsData = [];
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    bedsData = await rpc('allBookings', { lineUserId: profile.userId });
+    show($('loader'), false);
+    show($('content'), true);
+    render();
+  }
+
+  function render() {
+    const total = bedsData.length;
+    const occ = bedsData.filter(b => b.occupied).length;
+    $('totalAll').textContent = total;
+    $('totalFree').textContent = total - occ;
+    $('totalOcc').textContent = occ;
+
+    const floors = $('floors');
+    floors.innerHTML = '';
+
+    const groups = {};
+    bedsData.forEach(b => {
+      if (!groups[b.floor]) groups[b.floor] = {};
+      if (!groups[b.floor][b.room]) groups[b.floor][b.room] = [];
+      groups[b.floor][b.room].push(b);
+    });
+
+    Object.keys(groups).sort().forEach(fl => {
+      const fCard = document.createElement('div');
+      fCard.className = 'card';
+      const h = document.createElement('h2');
+      const allInFloor = Object.values(groups[fl]).flat();
+      const freeInFloor = allInFloor.filter(b => !b.occupied).length;
+      h.innerHTML = 'ชั้น ' + fl + ' <span class="muted" style="font-size:13px;font-weight:400">(ว่าง '+freeInFloor+'/'+allInFloor.length+')</span>';
+      fCard.appendChild(h);
+
+      Object.keys(groups[fl]).sort().forEach(rm => {
+        const beds = groups[fl][rm];
+        const rDiv = document.createElement('div');
+        rDiv.style.marginTop = '8px';
+        const free = beds.filter(b => !b.occupied).length;
+        rDiv.innerHTML = '<div class="muted" style="margin-bottom:4px">ห้อง '+rm+' ('+free+'/'+beds.length+')</div>';
+        const grid = document.createElement('div');
+        grid.className = 'bed-grid' + (String(fl) === '3' ? ' single-grid' : '');
+        beds.forEach(b => {
+          const el = document.createElement('div');
+          let cls = 'bed ';
+          if (b.is_mine) cls += 'mine';
+          else if (b.occupied) cls += 'occ';
+          else cls += 'free';
+          el.className = cls;
+          el.textContent = String(fl) === '3' ? rm : b.bed_no;
+          el.title = b.bed_id + (b.occupied ? ' • ' + b.patient_name + ' • ' + (b.staff_name || '') : ' • ว่าง');
+          if (b.occupied) {
+            el.onclick = () => showDetail(b);
+          }
+          grid.appendChild(el);
+        });
+        rDiv.appendChild(grid);
+        fCard.appendChild(rDiv);
+      });
+      floors.appendChild(fCard);
+    });
+  }
+
+  function showDetail(b) {
+    const lines = [
+      'เตียง: ' + b.bed_id,
+      'HN: ' + b.patient_hn,
+      'คนไข้: ' + b.patient_name,
+      'ผู้จอง: ' + (b.staff_name || '-'),
+      'ประเภท: ' + (b.booking_type === 'fixed' ? 'กำหนดวัน' : 'ไม่กำหนดออก'),
+      'เช็คอิน: ' + b.check_in_at,
+      b.check_out_planned ? ('กำหนดออก: ' + b.check_out_planned) : ''
+    ].filter(Boolean).join('\n');
+    alert(lines);
+  }
+
+  start();
+</script>
+</body>
+</html>

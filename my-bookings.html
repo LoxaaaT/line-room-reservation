@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>เตียงของฉัน · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>เตียงของฉัน</h1>
+
+  <div class="seg" style="margin-bottom:12px">
+    <button id="tabActive" class="active" onclick="setTab('active')">กำลังจอง</button>
+    <button id="tabHistory" onclick="setTab('history')">ประวัติ</button>
+  </div>
+
+  <div id="loader" class="loader">กำลังโหลด...</div>
+  <div id="list"></div>
+</div>
+
+<script>
+  let allBookings = [];
+  let currentTab = 'active';
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    allBookings = await rpc('myBookings', { lineUserId: profile.userId, includeHistory: true });
+    show($('loader'), false);
+    render();
+  }
+
+  function setTab(t) {
+    currentTab = t;
+    $('tabActive').classList.toggle('active', t === 'active');
+    $('tabHistory').classList.toggle('active', t === 'history');
+    render();
+  }
+
+  function render() {
+    const list = $('list');
+    list.innerHTML = '';
+    const filtered = currentTab === 'active'
+      ? allBookings.filter(b => b.status === 'active')
+      : allBookings.filter(b => b.status !== 'active');
+
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.className = 'card muted';
+      empty.style.textAlign = 'center';
+      empty.textContent = currentTab === 'active' ? 'ยังไม่มีการจองที่ active' : 'ยังไม่มีประวัติ';
+      list.appendChild(empty);
+      return;
+    }
+
+    filtered.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    filtered.forEach(b => list.appendChild(card_(b)));
+  }
+
+  function card_(b) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    const typeLabel = b.booking_type === 'fixed' ? ('กำหนดออก: ' + (b.check_out_planned || '-')) : 'ไม่กำหนดออก';
+    const statusPill = b.status === 'active'
+      ? '<span class="pill pill-free">active</span>'
+      : (b.status === 'completed'
+          ? '<span class="pill pill-occ" style="background:#e0e0e0;color:#555">completed</span>'
+          : '<span class="pill pill-occ">cancelled</span>');
+
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">${b.bed_id}</h2>
+        ${statusPill}
+      </div>
+      <p class="muted" style="margin:4px 0">${typeLabel}</p>
+      <hr>
+      <div><b>HN:</b> ${b.patient_hn}</div>
+      <div><b>คนไข้:</b> ${b.patient_name}</div>
+      <div><b>อาการ:</b> ${b.condition || '-'}</div>
+      <div class="muted" style="margin-top:8px">เช็คอิน: ${b.check_in_at}</div>
+      ${b.check_out_at ? '<div class="muted">เช็คเอาท์: '+b.check_out_at+'</div>' : ''}
+    `;
+    if (b.status === 'active') {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '12px';
+
+      const checkoutBtn = document.createElement('button');
+      checkoutBtn.className = 'btn-danger';
+      checkoutBtn.textContent = 'Checkout';
+      checkoutBtn.onclick = () => onCheckout(b);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn-secondary';
+      cancelBtn.textContent = 'ยกเลิก';
+      cancelBtn.onclick = () => onCancel(b);
+
+      row.appendChild(cancelBtn);
+      row.appendChild(checkoutBtn);
+      div.appendChild(row);
+    }
+    return div;
+  }
+
+  async function onCheckout(b) {
+    if (!confirm('ยืนยัน Checkout เตียง ' + b.bed_id + ' ?')) return;
+    const res = await rpc('checkout', { bookingId: b.booking_id, lineUserId: LIFF_USER.userId });
+    if (res.ok) {
+      Object.assign(b, res.booking);
+      render();
+    } else {
+      alert('ผิดพลาด: ' + res.error);
+    }
+  }
+
+  async function onCancel(b) {
+    if (!confirm('ยืนยันยกเลิกการจองเตียง ' + b.bed_id + ' ?')) return;
+    const res = await rpc('cancel', { bookingId: b.booking_id, lineUserId: LIFF_USER.userId });
+    if (res.ok) {
+      Object.assign(b, res.booking);
+      render();
+    } else {
+      alert('ผิดพลาด: ' + res.error);
+    }
+  }
+
+  start();
+</script>
+</body>
+</html>
