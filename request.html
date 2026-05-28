@@ -39,6 +39,18 @@
       <p class="muted" style="margin-top:8px">เจ้าหน้าที่ห้องพิเศษจะเป็นผู้จัดห้อง/คิวให้ แล้วระบบจะแจ้งกลับทาง LINE</p>
     </div>
   </div>
+
+  <div id="success" class="card" style="display:none;text-align:center">
+    <div style="font-size:52px;line-height:1.1">✅</div>
+    <h2 style="margin:8px 0;color:#1d8a31">ส่งคนไข้เข้าคิวแล้ว</h2>
+    <p id="successName" style="font-weight:700;font-size:18px;margin:4px 0"></p>
+    <p class="muted" style="margin-bottom:4px">คนไข้อยู่ในคิวรอจัดห้องแล้ว</p>
+    <p class="muted">เจ้าหน้าที่ห้องพิเศษจะจัดห้อง/คิวให้ แล้วระบบจะแจ้งกลับทาง LINE</p>
+    <hr>
+    <button class="btn-primary" onclick="goMyPatients()">ดูคนไข้ของฉัน</button>
+    <button class="btn-secondary" style="margin-top:8px" onclick="submitAnother()">ส่งคนไข้อีกคน</button>
+    <button id="closeBtn" class="btn-secondary" style="margin-top:8px;display:none" onclick="closeWin()">ปิดหน้านี้</button>
+  </div>
 </div>
 
 <script>
@@ -75,8 +87,7 @@
     try {
       const res = await rpc('submitRequest', payload);
       if (res.ok) {
-        $('msg').appendChild(alertBox('✓ ส่งคนไข้เข้าคิวแล้ว: ' + res.request.patient_name, true));
-        setTimeout(() => { if (liff.isInClient()) liff.closeWindow(); }, 1500);
+        showSuccess(res.request);
       } else {
         $('msg').appendChild(alertBox('ไม่สำเร็จ: ' + res.error));
       }
@@ -85,6 +96,29 @@
     } finally {
       $('submitBtn').disabled = false;
     }
+  }
+
+  function showSuccess(req) {
+    $('successName').textContent = req.patient_name;
+    show($('form'), false);
+    show($('success'), true);
+    if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+      show($('closeBtn'), true);
+    }
+  }
+
+  function goMyPatients() { location.href = '/my-patients'; }
+
+  function submitAnother() {
+    ['patientName', 'diagnosis', 'note'].forEach(id => { $(id).value = ''; });
+    ['tagRelative', 'tagStaff', 'tagVip'].forEach(id => { $(id).checked = false; });
+    $('msg').innerHTML = '';
+    show($('success'), false);
+    show($('form'), true);
+  }
+
+  function closeWin() {
+    if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) liff.closeWindow();
   }
 
   start();
