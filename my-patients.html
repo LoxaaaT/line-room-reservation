@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>คนไข้ของฉัน · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>คนไข้ของฉัน</h1>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const STATUS_LABEL = {
+    waiting: { text: 'รอจัดห้อง', cls: 'pill-mine' },
+    assigned: { text: 'ได้ห้อง/คิวแล้ว', cls: 'pill-free' },
+    discharged: { text: 'ออกแล้ว', cls: 'pill-gray' },
+    cancelled: { text: 'ยกเลิก', cls: 'pill-occ' }
+  };
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    await load();
+  }
+
+  async function load() {
+    const res = await rpc('myRequests', { lineUserId: LIFF_USER.userId, includeHistory: true });
+    show($('loader'), false);
+    render(res.requests || []);
+  }
+
+  function render(reqs) {
+    const list = $('list');
+    list.innerHTML = '';
+    if (!reqs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'card muted';
+      empty.style.textAlign = 'center';
+      empty.innerHTML = 'ยังไม่มีคนไข้ที่ส่งเข้าระบบ<br><a href="/request">ส่งคนไข้เข้าคิว</a>';
+      list.appendChild(empty);
+      return;
+    }
+    reqs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    reqs.forEach(r => list.appendChild(card_(r)));
+  }
+
+  function tagsText(r) {
+    const t = [];
+    if (r.tag_relative) t.push('ญาติสายตรง');
+    if (r.tag_staff) t.push('เจ้าหน้าที่');
+    if (r.tag_vip) t.push('VIP');
+    return t.join(', ');
+  }
+
+  function card_(r) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    const st = STATUS_LABEL[r.status] || { text: r.status, cls: 'pill-gray' };
+    const tags = tagsText(r);
+
+    let assignedHtml = '';
+    if (r.status === 'assigned') {
+      assignedHtml = `
+        <hr>
+        <div><b>ห้อง:</b> ${r.room_id} (ชั้น ${r.floor})</div>
+        <div><b>คิวในห้อง:</b> ลำดับ ${r.queue_no || '-'}</div>
+        <div><b>วันเข้า:</b> ${r.check_in_date}</div>
+        <div><b>กำหนดออก:</b> ${r.check_out_date}</div>`;
+    }
+
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">${r.patient_name}</h2>
+        <span class="pill ${st.cls}">${st.text}</span>
+      </div>
+      <div class="muted" style="margin:4px 0">Diagnosis: ${r.diagnosis || '-'}</div>
+      ${r.note ? '<div class="muted">หมายเหตุ: '+r.note+'</div>' : ''}
+      ${tags ? '<div class="muted">ป้าย: '+tags+'</div>' : ''}
+      ${assignedHtml}
+      <div class="muted" style="margin-top:8px;font-size:12px">ส่งเมื่อ: ${r.created_at}</div>
+    `;
+
+    if (r.status === 'waiting') {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '12px';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn-danger';
+      cancelBtn.textContent = 'ยกเลิก';
+      cancelBtn.onclick = () => onCancel(r);
+      row.appendChild(cancelBtn);
+      div.appendChild(row);
+    }
+    return div;
+  }
+
+  async function onCancel(r) {
+    if (!confirm('ยืนยันยกเลิกคนไข้ ' + r.patient_name + ' ?')) return;
+    const res = await rpc('cancelRequest', { requestId: r.request_id, lineUserId: LIFF_USER.userId });
+    if (res.ok) load();
+    else alert('ผิดพลาด: ' + res.error);
+  }
+
+  start();
+</script>
+</body>
+</html>

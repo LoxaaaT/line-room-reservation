@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>จัดการคิว · ห้องพิเศษ</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>จัดการคิวห้องพิเศษ</h1>
+  <p class="muted" id="whoText"></p>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <div id="content" style="display:none">
+    <h2>คนไข้รอจัดห้อง (<span id="waitCount">0</span>)</h2>
+    <div id="queue"></div>
+
+    <h2 style="margin-top:20px">ห้อง <span id="floorLabel"></span></h2>
+    <div id="rooms"></div>
+  </div>
+</div>
+
+<!-- Assign panel (overlay) -->
+<div id="assignOverlay" class="overlay" style="display:none">
+  <div class="sheet">
+    <h2 id="assignTitle">จัดห้องให้คนไข้</h2>
+    <p class="muted" id="assignPatient"></p>
+
+    <label>ห้อง</label>
+    <select id="assignRoom"></select>
+
+    <label>วันเข้าพัก</label>
+    <input id="assignDate" type="date">
+
+    <label>จำนวนวัน</label>
+    <input id="assignDays" type="number" min="1" value="1">
+
+    <p class="muted" id="assignPreview"></p>
+    <div id="assignMsg"></div>
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn-secondary" onclick="closeAssign()">ยกเลิก</button>
+      <button id="assignBtn" class="btn-primary" onclick="doAssign()">ยืนยันจัดห้อง</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ME = null;
+  let DATA = null;       // roomTimelines
+  let QUEUE = [];        // waiting requests
+  let editingRequest = null;   // request being assigned/edited
+  let editMode = false;        // true = editAssignment
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    ME = await rpc('getMe', { lineUserId: profile.userId });
+    if (!ME.ward && !ME.admin) {
+      document.querySelector('.wrap').innerHTML =
+        '<div class="alert alert-error">หน้านี้สำหรับเจ้าหน้าที่ห้องพิเศษเท่านั้น</div>';
+      return;
+    }
+    $('whoText').textContent = ME.admin
+      ? 'ผู้ดูแลระบบ (เห็น/จัดได้ทุกชั้น)'
+      : (ME.ward.name + ' · ดูแลชั้น ' + ME.ward.floor);
+    await load();
+  }
+
+  async function load() {
+    const [q, t] = await Promise.all([
+      rpc('queueList', { lineUserId: LIFF_USER.userId }),
+      rpc('roomTimelines', { lineUserId: LIFF_USER.userId })
+    ]);
+    QUEUE = q.requests || [];
+    DATA = t;
+    show($('loader'), false);
+    show($('content'), true);
+    $('floorLabel').textContent = (DATA.myFloor ? ('ชั้น ' + DATA.myFloor) : 'ทุกชั้น');
+    renderQueue();
+    renderRooms();
+  }
+
+  function tagsText(r) {
+    const t = [];
+    if (r.tag_relative) t.push('ญาติสายตรง');
+    if (r.tag_staff) t.push('เจ้าหน้าที่');
+    if (r.tag_vip) t.push('VIP');
+    return t.join(', ');
+  }
+
+  function renderQueue() {
+    $('waitCount').textContent = QUEUE.length;
+    const wrap = $('queue');
+    wrap.innerHTML = '';
+    if (!QUEUE.length) {
+      wrap.innerHTML = '<div class="card muted" style="text-align:center">ไม่มีคนไข้รอจัดห้อง</div>';
+      return;
+    }
+    QUEUE.forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      const tags = tagsText(r);
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2 style="margin:0">${r.patient_name}</h2>
+          <span class="pill pill-mine">รอจัดห้อง</span>
+        </div>
+        <div class="muted">${r.department} · ผู้ส่ง: ${r.staff_name}</div>
+        <div style="margin-top:4px">Diagnosis: ${r.diagnosis || '-'}</div>
+        ${r.note ? '<div class="muted">หมายเหตุ: '+r.note+'</div>' : ''}
+        ${tags ? '<div class="muted">ป้าย: '+tags+'</div>' : ''}
+      `;
+      const btn = document.createElement('button');
+      btn.className = 'btn-primary';
+      btn.style.marginTop = '10px';
+      btn.textContent = 'จัดห้อง';
+      btn.onclick = () => openAssign(r, false);
+      div.appendChild(btn);
+      wrap.appendChild(div);
+    });
+  }
+
+  function renderRooms() {
+    const wrap = $('rooms');
+    wrap.innerHTML = '';
+    DATA.byFloor.forEach(f => {
+      // ward staff: เห็นเฉพาะชั้นตัวเอง ; admin: ทุกชั้น
+      if (!ME.admin && DATA.myFloor && f.floor !== DATA.myFloor) return;
+      const head = document.createElement('div');
+      head.className = 'floor-head';
+      head.textContent = 'ชั้น ' + f.floor;
+      wrap.appendChild(head);
+
+      f.rooms.forEach(room => wrap.appendChild(roomCard_(f.floor, room)));
+    });
+  }
+
+  function roomCard_(floor, room) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    const canManage = ME.admin || (DATA.myFloor === floor);
+
+    let inner = `<div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">ห้อง ${room.room_id}</h2>
+        ${room.occupiedToday
+            ? '<span class="pill pill-occ">มีคนพัก</span>'
+            : '<span class="pill pill-free">ว่าง</span>'}
+      </div>`;
+
+    if (room.queue.length) {
+      inner += '<div style="margin-top:8px">';
+      room.queue.forEach(r => {
+        const isCurrent = room.current && room.current.request_id === r.request_id;
+        inner += `<div class="qrow ${isCurrent ? 'qcurrent' : ''}">
+            <span class="qno">#${r.queue_no || '-'}</span>
+            <span class="qbody"><b>${r.patient_name}</b><br>
+              <span class="muted">${r.check_in_date} → ${r.check_out_date} · ${r.department}</span></span>
+          </div>`;
+      });
+      inner += '</div>';
+    } else {
+      inner += '<div class="muted" style="margin-top:8px">ยังไม่มีคิว</div>';
+    }
+    div.innerHTML = inner;
+
+    if (canManage) {
+      // discharge/edit buttons for each assigned patient
+      room.queue.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.style.marginTop = '6px';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-secondary';
+        editBtn.textContent = 'แก้ #' + (r.queue_no || '');
+        editBtn.onclick = () => openAssign(r, true);
+        const disBtn = document.createElement('button');
+        disBtn.className = 'btn-danger';
+        disBtn.textContent = 'จำหน่าย';
+        disBtn.onclick = () => onDischarge(r);
+        row.appendChild(editBtn);
+        row.appendChild(disBtn);
+        div.appendChild(row);
+      });
+    }
+    return div;
+  }
+
+  // ---------- Assign panel ----------
+
+  function roomOptionsForAssign() {
+    const opts = [];
+    DATA.byFloor.forEach(f => {
+      if (!ME.admin && DATA.myFloor && f.floor !== DATA.myFloor) return;
+      f.rooms.forEach(room => opts.push({ room_id: room.room_id, floor: f.floor }));
+    });
+    return opts;
+  }
+
+  function openAssign(req, isEdit) {
+    editingRequest = req;
+    editMode = isEdit;
+    $('assignTitle').textContent = isEdit ? 'แก้การจัดห้อง' : 'จัดห้องให้คนไข้';
+    $('assignPatient').textContent = req.patient_name + ' · ' + req.department;
+    $('assignMsg').innerHTML = '';
+
+    const sel = $('assignRoom');
+    sel.innerHTML = '';
+    roomOptionsForAssign().forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.room_id;
+      opt.textContent = 'ห้อง ' + o.room_id + ' (ชั้น ' + o.floor + ')';
+      sel.appendChild(opt);
+    });
+
+    if (isEdit && req.room_id) sel.value = req.room_id;
+    $('assignDate').value = isEdit && req.check_in_date ? req.check_in_date : (DATA.today || todayStr_());
+    $('assignDays').value = isEdit ? daysBetween_(req.check_in_date, req.check_out_date) : 1;
+    updatePreview();
+    show($('assignOverlay'), true);
+  }
+
+  function closeAssign() { show($('assignOverlay'), false); editingRequest = null; }
+
+  function updatePreview() {
+    const start = $('assignDate').value;
+    const days = Number($('assignDays').value);
+    if (start && days >= 1) {
+      $('assignPreview').textContent = 'ช่วงพัก: ' + start + ' → ' + addDaysStr_(start, days) + ' (ปล่อยห้องวันที่ ' + addDaysStr_(start, days) + ')';
+    } else {
+      $('assignPreview').textContent = '';
+    }
+  }
+
+  async function doAssign() {
+    $('assignMsg').innerHTML = '';
+    const payload = {
+      lineUserId: LIFF_USER.userId,
+      requestId: editingRequest.request_id,
+      roomId: $('assignRoom').value,
+      startDate: $('assignDate').value,
+      days: Number($('assignDays').value)
+    };
+    if (!payload.roomId || !payload.startDate || !payload.days) {
+      $('assignMsg').appendChild(alertBox('กรุณากรอกห้อง วันเข้า และจำนวนวันให้ครบ'));
+      return;
+    }
+    $('assignBtn').disabled = true;
+    try {
+      const res = await rpc(editMode ? 'editAssignment' : 'assignRoom', payload);
+      if (res.ok) {
+        closeAssign();
+        await load();
+      } else {
+        $('assignMsg').appendChild(alertBox('ไม่สำเร็จ: ' + res.error));
+      }
+    } catch (e) {
+      $('assignMsg').appendChild(alertBox('Error: ' + (e.message || e)));
+    } finally {
+      $('assignBtn').disabled = false;
+    }
+  }
+
+  async function onDischarge(r) {
+    if (!confirm('ยืนยันจำหน่ายคนไข้ ' + r.patient_name + ' ออกจากห้อง ' + r.room_id + ' ?')) return;
+    const res = await rpc('discharge', { requestId: r.request_id, lineUserId: LIFF_USER.userId });
+    if (res.ok) load();
+    else alert('ผิดพลาด: ' + res.error);
+  }
+
+  // ---------- date helpers ----------
+  function todayStr_() {
+    const d = new Date(); const z = n => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + z(d.getMonth()+1) + '-' + z(d.getDate());
+  }
+  function addDaysStr_(dateStr, days) {
+    const p = dateStr.split('-').map(Number);
+    const d = new Date(p[0], p[1]-1, p[2]); d.setDate(d.getDate()+days);
+    const z = n => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + z(d.getMonth()+1) + '-' + z(d.getDate());
+  }
+  function daysBetween_(a, b) {
+    if (!a || !b) return 1;
+    const pa = a.split('-').map(Number), pb = b.split('-').map(Number);
+    const da = new Date(pa[0],pa[1]-1,pa[2]), db = new Date(pb[0],pb[1]-1,pb[2]);
+    return Math.max(1, Math.round((db - da) / 86400000));
+  }
+
+  document.addEventListener('input', e => {
+    if (e.target.id === 'assignDate' || e.target.id === 'assignDays') updatePreview();
+  });
+
+  start();
+</script>
+</body>
+</html>

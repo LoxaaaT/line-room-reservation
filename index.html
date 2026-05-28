@@ -5,18 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Room Reservation</title>
   <link rel="stylesheet" href="/styles.css">
-  <script>
-    // Default landing: redirect to /booking
-    // (LIFF endpoint URL ตรงนี้ — Rich Menu ควรใช้ path เช่น /booking, /register โดยตรง)
-    const params = new URLSearchParams(location.search);
-    let page = params.get('page') || 'booking';
-    const allowed = ['booking', 'register', 'my-bookings', 'dashboard'];
-    if (!allowed.includes(page)) page = 'booking';
-    const newSearch = location.search ? location.search : '';
-    location.replace('/' + page + (newSearch ? newSearch : ''));
-  </script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
 </head>
 <body>
-  <div class="wrap"><div class="loader">กำลังเปลี่ยนหน้า...</div></div>
+  <div class="wrap"><div id="loader" class="loader">กำลังเปลี่ยนหน้า...</div></div>
+<script>
+  const ALLOWED = ['register', 'request', 'my-patients', 'manage', 'dashboard'];
+
+  function goto(page) {
+    const q = qs('floor') ? ('?floor=' + qs('floor')) : '';
+    location.replace('/' + page + q);
+  }
+
+  async function route() {
+    // ?page= override (ใช้กับ Rich Menu ที่ชี้มาที่ LIFF endpoint เดียว)
+    const explicit = qs('page');
+    if (explicit && ALLOWED.includes(explicit)) return goto(explicit);
+
+    // ไม่ระบุ page → ตัดสินตาม role
+    const profile = await initLiff();
+    if (!profile) return;
+    const me = await rpc('getMe', { lineUserId: profile.userId });
+    if (me.ward || me.admin) return goto('manage');
+    if (me.registered) return goto('request');
+    return goto('register');
+  }
+
+  route();
+</script>
 </body>
 </html>

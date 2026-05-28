@@ -17,17 +17,14 @@
   <div id="form" style="display:none">
     <div class="card">
       <p class="muted" id="welcomeText"></p>
-      <label>รหัสพนักงาน (Staff ID)</label>
-      <input id="staffId" placeholder="เช่น D00123, N00456" autocomplete="off">
 
       <label>ชื่อ-นามสกุล (พร้อมคำนำหน้า)</label>
       <input id="name" placeholder="เช่น นพ.สมชาย ใจดี" autocomplete="off">
 
-      <label>ตำแหน่ง</label>
-      <div class="seg">
-        <button id="rDoctor" type="button" class="active" onclick="pickRole('doctor')">หมอ</button>
-        <button id="rNurse" type="button" onclick="pickRole('nurse')">พยาบาล</button>
-      </div>
+      <label>แผนก / ตึก</label>
+      <select id="department">
+        <option value="">— เลือกแผนก —</option>
+      </select>
 
       <div id="msg"></div>
 
@@ -38,21 +35,21 @@
 </div>
 
 <script>
-  let role = 'doctor';
-  function pickRole(r) {
-    role = r;
-    $('rDoctor').classList.toggle('active', r === 'doctor');
-    $('rNurse').classList.toggle('active', r === 'nurse');
-  }
-
   async function start() {
     const profile = await initLiff();
     if (!profile) return;
     const me = await rpc('getMe', { lineUserId: profile.userId });
+
+    const sel = $('department');
+    (me.departments || []).forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      sel.appendChild(opt);
+    });
+
     if (me.registered) {
-      $('staffId').value = me.user.staff_id || '';
       $('name').value = me.user.name || '';
-      pickRole(me.user.role || 'doctor');
+      sel.value = me.user.department || '';
       $('welcomeText').textContent = 'คุณลงทะเบียนแล้ว — แก้ไขข้อมูลและกดบันทึกอีกครั้งได้';
     } else {
       $('welcomeText').textContent = 'สวัสดีคุณ ' + profile.displayName + ' กรุณากรอกข้อมูลเพื่อใช้งานระบบ';
@@ -62,17 +59,17 @@
   }
 
   async function submitForm() {
-    const staffId = $('staffId').value.trim();
     const name = $('name').value.trim();
+    const department = $('department').value;
     $('msg').innerHTML = '';
-    if (!staffId || !name) {
-      $('msg').appendChild(alertBox('กรุณากรอกรหัสและชื่อให้ครบ'));
+    if (!name || !department) {
+      $('msg').appendChild(alertBox('กรุณากรอกชื่อและเลือกแผนกให้ครบ'));
       return;
     }
     $('submitBtn').disabled = true;
     try {
       const res = await rpc('register', {
-        lineUserId: LIFF_USER.userId, staffId: staffId, name: name, role: role
+        lineUserId: LIFF_USER.userId, name: name, department: department
       });
       if (res.ok) {
         $('msg').appendChild(alertBox('✓ ลงทะเบียนเรียบร้อย', true));

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>ส่งคนไข้เข้าคิว · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>ส่งคนไข้เข้าคิว</h1>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <div id="form" style="display:none">
+    <div class="card">
+      <p class="muted" id="whoText"></p>
+
+      <label>ชื่อคนไข้</label>
+      <input id="patientName" placeholder="ชื่อ-นามสกุล คนไข้" autocomplete="off">
+
+      <label>Diagnosis</label>
+      <textarea id="diagnosis" placeholder="การวินิจฉัย / อาการ"></textarea>
+
+      <label>หมายเหตุ (ถ้ามี)</label>
+      <textarea id="note" placeholder="ข้อมูลเพิ่มเติม"></textarea>
+
+      <label>ป้ายกำกับ (เลือกได้หลายข้อ หรือไม่เลือกก็ได้)</label>
+      <label class="chk"><input type="checkbox" id="tagRelative"> ญาติสายตรงเจ้าหน้าที่</label>
+      <label class="chk"><input type="checkbox" id="tagStaff"> เจ้าหน้าที่</label>
+      <label class="chk"><input type="checkbox" id="tagVip"> ผู้บริจาค VIP</label>
+
+      <div id="msg"></div>
+
+      <hr>
+      <button id="submitBtn" class="btn-primary" onclick="submitForm()">ส่งเข้าคิว</button>
+      <p class="muted" style="margin-top:8px">เจ้าหน้าที่ห้องพิเศษจะเป็นผู้จัดห้อง/คิวให้ แล้วระบบจะแจ้งกลับทาง LINE</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    const me = await rpc('getMe', { lineUserId: profile.userId });
+    if (!me.registered) {
+      document.querySelector('.wrap').innerHTML =
+        '<div class="alert alert-error">กรุณาลงทะเบียนก่อนส่งคนไข้ — <a href="/register">ลงทะเบียนที่นี่</a></div>';
+      return;
+    }
+    $('whoText').textContent = 'ผู้ส่ง: ' + me.user.name + ' · ' + me.user.department;
+    show($('loader'), false);
+    show($('form'), true);
+  }
+
+  async function submitForm() {
+    $('msg').innerHTML = '';
+    const payload = {
+      lineUserId: LIFF_USER.userId,
+      patientName: $('patientName').value.trim(),
+      diagnosis: $('diagnosis').value.trim(),
+      note: $('note').value.trim(),
+      tagRelative: $('tagRelative').checked,
+      tagStaff: $('tagStaff').checked,
+      tagVip: $('tagVip').checked
+    };
+    if (!payload.patientName) {
+      $('msg').appendChild(alertBox('กรุณากรอกชื่อคนไข้'));
+      return;
+    }
+    $('submitBtn').disabled = true;
+    try {
+      const res = await rpc('submitRequest', payload);
+      if (res.ok) {
+        $('msg').appendChild(alertBox('✓ ส่งคนไข้เข้าคิวแล้ว: ' + res.request.patient_name, true));
+        setTimeout(() => { if (liff.isInClient()) liff.closeWindow(); }, 1500);
+      } else {
+        $('msg').appendChild(alertBox('ไม่สำเร็จ: ' + res.error));
+      }
+    } catch (e) {
+      $('msg').appendChild(alertBox('Error: ' + (e.message || e)));
+    } finally {
+      $('submitBtn').disabled = false;
+    }
+  }
+
+  start();
+</script>
+</body>
+</html>

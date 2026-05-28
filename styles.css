@@ -35,6 +35,7 @@ button {
 .pill-free { background: #d6f5db; color: #1d8a31; }
 .pill-occ  { background: #fde0e0; color: #c92a2a; }
 .pill-mine { background: #ffe9b3; color: #8a5a00; }
+.pill-gray { background: #e0e0e0; color: #555; }
 .bed-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
 .bed {
   aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
@@ -58,3 +59,26 @@ button {
 }
 .seg button.active { background: #fff; color: #1f6fb2; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 hr { border: none; border-top: 1px solid #eee; margin: 12px 0; }
+
+/* checkbox row (ฟอร์มส่งคนไข้) */
+.chk { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #222; margin: 6px 0; cursor: pointer; }
+.chk input { width: auto; }
+
+/* floor section heading */
+.floor-head { font-weight: 700; color: #1f6fb2; margin: 14px 0 6px; font-size: 15px; }
+
+/* room queue rows */
+.qrow { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid #f0f0f0; align-items: flex-start; }
+.qrow.qcurrent { background: #f3faf4; border-radius: 6px; padding: 6px; }
+.qno { flex: 0 0 36px; font-weight: 700; color: #1f6fb2; }
+.qbody { flex: 1; font-size: 14px; }
+
+/* assign overlay sheet */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  display: flex; align-items: flex-end; justify-content: center; z-index: 100;
+}
+.sheet {
+  background: #fff; width: 100%; max-width: 560px; border-radius: 16px 16px 0 0;
+  padding: 20px 16px 28px; max-height: 90vh; overflow-y: auto;
+}
