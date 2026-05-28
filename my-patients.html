@@ -71,8 +71,8 @@
         <hr>
         <div><b>ห้อง:</b> ${r.room_id} (ชั้น ${r.floor})</div>
         <div><b>คิวในห้อง:</b> ลำดับ ${r.queue_no || '-'}</div>
-        <div><b>วันเข้า:</b> ${r.check_in_date}</div>
-        <div><b>กำหนดออก:</b> ${r.check_out_date}</div>`;
+        <div><b>วันเข้า:</b> ${thaiDate(r.check_in_date, true)}</div>
+        <div><b>กำหนดออก:</b> ${thaiDate(r.check_out_date, true)}</div>`;
     }
 
     div.innerHTML = `
@@ -84,7 +84,7 @@
       ${r.note ? '<div class="muted">หมายเหตุ: '+r.note+'</div>' : ''}
       ${tags ? '<div class="muted">ป้าย: '+tags+'</div>' : ''}
       ${assignedHtml}
-      <div class="muted" style="margin-top:8px;font-size:12px">ส่งเมื่อ: ${r.created_at}</div>
+      <div class="muted" style="margin-top:8px;font-size:12px">ส่งเมื่อ: ${thaiDate(r.created_at, true)}</div>
     `;
 
     if (r.status === 'waiting') {

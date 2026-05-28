@@ -60,7 +60,7 @@
   }
 
   function render() {
-    $('todayLabel').textContent = DATA.today || '';
+    $('todayLabel').textContent = DATA.today ? thaiDate(DATA.today) : '';
     let all = 0, occ = 0;
 
     const floors = $('floors');
@@ -84,7 +84,7 @@
           : '<span class="pill pill-free">ว่าง</span>';
         let detail = '';
         if (cur) {
-          detail = `<div class="muted">${cur.patient_name} · ${cur.check_in_date} → ${cur.check_out_date}</div>`;
+          detail = `<div class="muted">${cur.patient_name} · ${thaiDate(cur.check_in_date)} → ${thaiDate(cur.check_out_date)}</div>`;
         }
         const upcoming = room.upcoming.length ? `<div class="muted">คิวถัดไป: ${room.upcoming.length} ราย</div>` : '';
         rDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">

@@ -159,7 +159,7 @@
         inner += `<div class="qrow ${isCurrent ? 'qcurrent' : ''}">
             <span class="qno">#${r.queue_no || '-'}</span>
             <span class="qbody"><b>${r.patient_name}</b><br>
-              <span class="muted">${r.check_in_date} → ${r.check_out_date} · ${r.department}</span></span>
+              <span class="muted">${thaiDate(r.check_in_date)} → ${thaiDate(r.check_out_date)} · ${r.department}</span></span>
           </div>`;
       });
       inner += '</div>';
@@ -230,7 +230,8 @@
     const start = $('assignDate').value;
     const days = Number($('assignDays').value);
     if (start && days >= 1) {
-      $('assignPreview').textContent = 'ช่วงพัก: ' + start + ' → ' + addDaysStr_(start, days) + ' (ปล่อยห้องวันที่ ' + addDaysStr_(start, days) + ')';
+      const out = addDaysStr_(start, days);
+      $('assignPreview').textContent = 'ช่วงพัก: ' + thaiDate(start) + ' → ' + thaiDate(out) + ' (ปล่อยห้อง ' + thaiDate(out) + ')';
     } else {
       $('assignPreview').textContent = '';
     }

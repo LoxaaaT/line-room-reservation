@@ -84,3 +84,26 @@ function fmtDateLocal(d) {
   return d.getFullYear() + '-' + z(d.getMonth()+1) + '-' + z(d.getDate())
        + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':00';
 }
+
+// แปลงวันที่เป็นรูปแบบไทย เช่น "วันพฤหัสบดี 28/05/2569" (+ เวลา "00.00น" ถ้า withTime)
+// รับได้ทั้ง "2026-05-28", "2026-05-28 07:54:57", หรือ string วันที่แบบอื่น
+const TH_WEEKDAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+function thaiDate(value, withTime) {
+  if (!value) return '-';
+  const s = String(value);
+  let y, mo, d, h = 0, mi = 0;
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (m) {
+    y = +m[1]; mo = +m[2]; d = +m[3]; h = m[4] ? +m[4] : 0; mi = m[5] ? +m[5] : 0;
+  } else {
+    const dt = new Date(s);
+    if (isNaN(dt.getTime())) return s;
+    y = dt.getFullYear(); mo = dt.getMonth() + 1; d = dt.getDate();
+    h = dt.getHours(); mi = dt.getMinutes();
+  }
+  const wd = TH_WEEKDAYS[new Date(y, mo - 1, d).getDay()];
+  const z = n => String(n).padStart(2, '0');
+  let out = 'วัน' + wd + ' ' + z(d) + '/' + z(mo) + '/' + (y + 543);
+  if (withTime) out += ' ' + z(h) + '.' + z(mi) + 'น';
+  return out;
+}
