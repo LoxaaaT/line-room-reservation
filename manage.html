@@ -16,7 +16,10 @@
   <div id="loader" class="loader">กำลังโหลด...</div>
 
   <div id="content" style="display:none">
-    <button class="btn-secondary" style="margin-bottom:14px" onclick="location.href='/dashboard'">📊 ดูภาพรวมทั้งตึก</button>
+    <div class="row" style="margin-bottom:14px">
+      <button class="btn-secondary" onclick="location.href='/dashboard'">📊 ดูภาพรวมทั้งตึก</button>
+      <button id="adminBtn" class="btn-secondary" style="display:none" onclick="location.href='/admin'">⚙️ จัดการสิทธิ์</button>
+    </div>
 
     <h2>คนไข้รอจัดห้อง (<span id="waitCount">0</span>)</h2>
     <div id="queue"></div>
@@ -70,6 +73,7 @@
     $('whoText').textContent = ME.admin
       ? 'ผู้ดูแลระบบ (เห็น/จัดได้ทุกชั้น)'
       : (ME.ward.name + ' · ดูแลชั้น ' + ME.ward.floor);
+    if (ME.admin) show($('adminBtn'), true);
     await load();
   }
 

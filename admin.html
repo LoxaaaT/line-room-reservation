@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>จัดการสิทธิ์ · Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>จัดการสิทธิ์ Ward Staff</h1>
+  <p class="muted" id="whoText"></p>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <div id="content" style="display:none">
+    <!-- เพิ่ม ward staff -->
+    <div class="card">
+      <h2 style="margin-top:0">เพิ่มสิทธิ์ ward staff</h2>
+
+      <label>LINE User ID</label>
+      <input id="newUserId" placeholder="U + 32 ตัวอักษร" autocomplete="off">
+      <p class="muted" style="font-size:12px;margin-top:4px">ให้เจ้าตัวพิมพ์ "myid" ใน LINE OA เพื่อหา User ID</p>
+
+      <label>ชื่อ-นามสกุล</label>
+      <input id="newName" placeholder="เช่น พว.สมหญิง" autocomplete="off">
+
+      <label>ชั้นที่ดูแล</label>
+      <div class="seg" id="floorSeg">
+        <button type="button" data-floor="1" onclick="pickFloor(1)">ชั้น 1</button>
+        <button type="button" data-floor="2" onclick="pickFloor(2)">ชั้น 2</button>
+        <button type="button" data-floor="3" onclick="pickFloor(3)">ชั้น 3</button>
+      </div>
+
+      <div id="addMsg"></div>
+
+      <button id="addBtn" class="btn-primary" style="margin-top:12px" onclick="onAdd()">เพิ่มสิทธิ์ ward</button>
+      <p class="muted" style="font-size:12px;margin-top:8px">
+        เมื่อเพิ่ม → ระบบจะ link Menu B (ward) ให้อัตโนมัติ user คนนั้น restart LINE จะเห็นเมนูใหม่
+      </p>
+    </div>
+
+    <!-- รายการ ward staff ปัจจุบัน -->
+    <h2>Ward staff ปัจจุบัน (<span id="wardCount">0</span>)</h2>
+    <div id="wardList"></div>
+  </div>
+</div>
+
+<script>
+  let ME = null;
+  let selectedFloor = 1;
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    ME = await rpc('getMe', { lineUserId: profile.userId });
+    if (!ME.admin) {
+      document.querySelector('.wrap').innerHTML =
+        '<div class="alert alert-error">หน้านี้สำหรับ admin เท่านั้น</div>';
+      return;
+    }
+    $('whoText').textContent = 'Admin: ' + (ME.user ? ME.user.name : profile.displayName);
+    pickFloor(1);
+    await load();
+  }
+
+  function pickFloor(f) {
+    selectedFloor = f;
+    document.querySelectorAll('#floorSeg [data-floor]').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.floor) === f));
+  }
+
+  async function load() {
+    const res = await rpc('listWardStaff', { lineUserId: LIFF_USER.userId });
+    show($('loader'), false);
+    show($('content'), true);
+    renderList(res.wardStaff || []);
+  }
+
+  function renderList(rows) {
+    $('wardCount').textContent = rows.length;
+    const wrap = $('wardList');
+    wrap.innerHTML = '';
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="card muted" style="text-align:center">ยังไม่มี ward staff</div>';
+      return;
+    }
+    rows.sort((a, b) => a.floor - b.floor || a.name.localeCompare(b.name));
+    rows.forEach(r => wrap.appendChild(card_(r)));
+  }
+
+  function card_(r) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h2 style="margin:0">${r.name}</h2>
+          <div class="muted">ดูแลชั้น ${r.floor}</div>
+        </div>
+        <span class="pill pill-free">ชั้น ${r.floor}</span>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:8px;word-break:break-all">${r.line_user_id}</div>
+    `;
+    const btn = document.createElement('button');
+    btn.className = 'btn-danger';
+    btn.style.marginTop = '10px';
+    btn.textContent = 'ถอดสิทธิ์';
+    btn.onclick = () => onRevoke(r);
+    div.appendChild(btn);
+    return div;
+  }
+
+  async function onAdd() {
+    $('addMsg').innerHTML = '';
+    const userId = $('newUserId').value.trim();
+    const name = $('newName').value.trim();
+    if (!userId || !name) {
+      $('addMsg').appendChild(alertBox('กรอกข้อมูลให้ครบ'));
+      return;
+    }
+    if (!/^U[a-f0-9]{32}$/.test(userId)) {
+      $('addMsg').appendChild(alertBox('LINE User ID ผิดรูปแบบ (ต้องเป็น U + ตัวเลข/a-f 32 ตัว)'));
+      return;
+    }
+    $('addBtn').disabled = true;
+    try {
+      const res = await rpc('grantWard', {
+        lineUserId: LIFF_USER.userId, userId: userId, name: name, floor: selectedFloor
+      });
+      if (res.ok) {
+        $('newUserId').value = '';
+        $('newName').value = '';
+        $('addMsg').appendChild(alertBox('✓ เพิ่ม ' + name + ' (ชั้น ' + selectedFloor + ') แล้ว', true));
+        await load();
+      } else {
+        $('addMsg').appendChild(alertBox('ผิดพลาด: ' + res.error));
+      }
+    } catch (e) {
+      $('addMsg').appendChild(alertBox('Error: ' + (e.message || e)));
+    } finally {
+      $('addBtn').disabled = false;
+    }
+  }
+
+  async function onRevoke(r) {
+    if (!confirm('ถอดสิทธิ์ ward ของ ' + r.name + ' (ชั้น ' + r.floor + ') ?')) return;
+    const res = await rpc('revokeWard', {
+      lineUserId: LIFF_USER.userId, userId: r.line_user_id
+    });
+    if (res.ok) {
+      await load();
+    } else {
+      alert('ผิดพลาด: ' + res.error);
+    }
+  }
+
+  start();
+</script>
+</body>
+</html>
