@@ -30,8 +30,11 @@
     await load();
   }
 
+  let PRICES = { normal: 0, vip: 0 };
+
   async function load() {
     const res = await rpc('myRequests', { lineUserId: LIFF_USER.userId, includeHistory: true });
+    if (res.prices) PRICES = res.prices;
     show($('loader'), false);
     render(res.requests || []);
   }
@@ -67,9 +70,11 @@
 
     let assignedHtml = '';
     if (r.status === 'assigned') {
+      const price = r.is_vip ? PRICES.vip : PRICES.normal;
+      const typePill = r.is_vip ? ' <span class="pill pill-vip">VIP</span>' : '';
       assignedHtml = `
         <hr>
-        <div><b>ห้อง:</b> ${r.room_id} (ชั้น ${r.floor})</div>
+        <div><b>ห้อง:</b> ${r.room_id}${typePill} (ชั้น ${r.floor}) · ${price.toLocaleString()} บ./วัน</div>
         <div><b>คิวในห้อง:</b> ลำดับ ${r.queue_no || '-'}</div>
         <div><b>วันเข้า:</b> ${thaiDate(r.check_in_date, true)}</div>
         <div><b>กำหนดออก:</b> ${thaiDate(r.check_out_date, true)}</div>`;

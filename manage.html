@@ -147,8 +147,15 @@
     div.className = 'card';
     const canManage = ME.admin || (DATA.myFloor === floor);
 
-    let inner = `<div style="display:flex;justify-content:space-between;align-items:center">
-        <h2 style="margin:0">ห้อง ${room.room_id}</h2>
+    const price = room.is_vip ? DATA.prices.vip : DATA.prices.normal;
+    const priceLabel = `<div class="muted" style="margin-top:2px">${price.toLocaleString()} บาท/วัน</div>`;
+    const typePill = room.is_vip ? '<span class="pill pill-vip">VIP</span>' : '';
+
+    let inner = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <h2 style="margin:0">ห้อง ${room.room_id} ${typePill}</h2>
+          ${priceLabel}
+        </div>
         ${room.occupiedToday
             ? '<span class="pill pill-occ">มีคนพัก</span>'
             : '<span class="pill pill-free">ว่าง</span>'}
@@ -198,7 +205,7 @@
     const opts = [];
     DATA.byFloor.forEach(f => {
       if (!ME.admin && DATA.myFloor && f.floor !== DATA.myFloor) return;
-      f.rooms.forEach(room => opts.push({ room_id: room.room_id, floor: f.floor }));
+      f.rooms.forEach(room => opts.push({ room_id: room.room_id, floor: f.floor, is_vip: !!room.is_vip }));
     });
     return opts;
   }
@@ -215,7 +222,10 @@
     roomOptionsForAssign().forEach(o => {
       const opt = document.createElement('option');
       opt.value = o.room_id;
-      opt.textContent = 'ห้อง ' + o.room_id + ' (ชั้น ' + o.floor + ')';
+      const price = o.is_vip ? DATA.prices.vip : DATA.prices.normal;
+      opt.textContent = 'ห้อง ' + o.room_id + ' (ชั้น ' + o.floor + ')'
+        + (o.is_vip ? ' · VIP' : '')
+        + ' — ' + price.toLocaleString() + ' บ./วัน';
       sel.appendChild(opt);
     });
 

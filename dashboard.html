@@ -87,8 +87,10 @@
           detail = `<div class="muted">${cur.patient_name} · ${thaiDate(cur.check_in_date)} → ${thaiDate(cur.check_out_date)}</div>`;
         }
         const upcoming = room.upcoming.length ? `<div class="muted">คิวถัดไป: ${room.upcoming.length} ราย</div>` : '';
+        const price = room.is_vip ? DATA.prices.vip : DATA.prices.normal;
+        const typePill = room.is_vip ? ' <span class="pill pill-vip">VIP</span>' : '';
         rDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
-            <b>ห้อง ${room.room_id}</b>${status}
+            <span><b>ห้อง ${room.room_id}</b>${typePill} <span class="muted">· ${price.toLocaleString()} บ./วัน</span></span>${status}
           </div>${detail}${upcoming}`;
         fCard.appendChild(rDiv);
       });

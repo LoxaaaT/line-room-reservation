@@ -36,6 +36,7 @@ button {
 .pill-occ  { background: #fde0e0; color: #c92a2a; }
 .pill-mine { background: #ffe9b3; color: #8a5a00; }
 .pill-gray { background: #e0e0e0; color: #555; }
+.pill-vip { background: #fff3cd; color: #856404; border: 1px solid #ffe28a; }
 .bed-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
 .bed {
   aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
