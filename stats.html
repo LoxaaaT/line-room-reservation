@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>สถิติ · Room Reservation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/config.js"></script>
+  <script src="/common.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>📊 สถิติการจองห้อง</h1>
+  <p class="muted" id="whoText"></p>
+  <div id="loader" class="loader">กำลังโหลด...</div>
+
+  <div id="content" style="display:none">
+    <!-- ตัวกรองช่วงเดือน -->
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>จากเดือน</label>
+          <input type="month" id="fromMonth">
+        </div>
+        <div>
+          <label>ถึงเดือน</label>
+          <input type="month" id="toMonth">
+        </div>
+      </div>
+      <button class="btn-primary" style="margin-top:10px" onclick="applyFilter()">กรอง</button>
+      <button class="btn-secondary" style="margin-top:6px" onclick="clearFilter()">ทั้งหมด</button>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="card">
+      <h2 style="margin-top:0">สรุปภาพรวม</h2>
+      <div class="row" style="text-align:center;flex-wrap:wrap">
+        <div><div class="muted">ทั้งหมด</div><div id="totalStays" class="bignum">-</div></div>
+        <div><div class="muted">รอจัดห้อง</div><div id="waitingCount" class="bignum" style="color:#8a5a00">-</div></div>
+        <div><div class="muted">กำลังพัก</div><div id="assignedCount" class="bignum" style="color:#c92a2a">-</div></div>
+        <div><div class="muted">ออกแล้ว</div><div id="dischargedCount" class="bignum" style="color:#888">-</div></div>
+      </div>
+    </div>
+
+    <!-- Avg & Revenue -->
+    <div class="card">
+      <h2 style="margin-top:0">ค่าเฉลี่ย + รายได้ (ในช่วงที่กรอง)</h2>
+      <div><b>วันพักเฉลี่ย:</b> <span id="avgStay">-</span> วัน</div>
+      <div><b>เวลารอเฉลี่ย (submit → จัดห้อง):</b> <span id="avgWait">-</span> ชม.</div>
+      <hr>
+      <div><b>รายได้รวม:</b> ฿<span id="revTotal">-</span></div>
+      <div class="muted">VIP: <span id="revVip">-</span> (<span id="vipDays">-</span> วัน) · ห้องธรรมดา: <span id="revNormal">-</span> (<span id="normalDays">-</span> วัน)</div>
+    </div>
+
+    <!-- ชั้น -->
+    <div class="card">
+      <h2 style="margin-top:0">การจองต่อชั้น</h2>
+      <canvas id="chartFloor" height="200"></canvas>
+    </div>
+
+    <!-- เดือน -->
+    <div class="card">
+      <h2 style="margin-top:0">การจองต่อเดือน</h2>
+      <canvas id="chartMonth" height="200"></canvas>
+    </div>
+
+    <!-- ห้อง -->
+    <div class="card">
+      <h2 style="margin-top:0">Top 10 ห้องที่ใช้บ่อย</h2>
+      <div id="byRoomList"></div>
+      <hr>
+      <h2>ห้องที่ใช้น้อย</h2>
+      <div id="leastList"></div>
+    </div>
+
+    <!-- แผนก -->
+    <div class="card">
+      <h2 style="margin-top:0">แผนกที่ส่งคนไข้มากสุด</h2>
+      <canvas id="chartDept" height="280"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ME = null;
+  let chartFloor = null, chartMonth = null, chartDept = null;
+
+  async function start() {
+    const profile = await initLiff();
+    if (!profile) return;
+    ME = await rpc('getMe', { lineUserId: profile.userId });
+    if (!ME.ward && !ME.admin) {
+      document.querySelector('.wrap').innerHTML = '<div class="alert alert-error">หน้านี้สำหรับเจ้าหน้าที่ห้องพิเศษ/admin</div>';
+      return;
+    }
+    $('whoText').textContent = ME.admin ? 'Admin' : (ME.ward.name + ' · ดูแลชั้น ' + ME.ward.floor);
+    await load();
+  }
+
+  async function load(from, to) {
+    show($('loader'), true);
+    show($('content'), false);
+    const res = await rpc('stats', { lineUserId: LIFF_USER.userId, from: from || '', to: to || '' });
+    show($('loader'), false);
+    if (!res.ok) {
+      document.querySelector('.wrap').innerHTML = '<div class="alert alert-error">' + (res.error || 'Error') + '</div>';
+      return;
+    }
+    show($('content'), true);
+    render(res);
+  }
+
+  function applyFilter() { load($('fromMonth').value, $('toMonth').value); }
+  function clearFilter() { $('fromMonth').value = ''; $('toMonth').value = ''; load(); }
+
+  function fmtBaht(n) { return (n || 0).toLocaleString(); }
+
+  function render(s) {
+    // status
+    $('totalStays').textContent = s.totals.stays;
+    $('waitingCount').textContent = s.statusCount.waiting;
+    $('assignedCount').textContent = s.statusCount.assigned;
+    $('dischargedCount').textContent = s.statusCount.discharged;
+
+    // avg + revenue
+    $('avgStay').textContent = s.avgStayDays;
+    $('avgWait').textContent = s.avgWaitHours;
+    $('revTotal').textContent = fmtBaht(s.revenue.total);
+    $('revVip').textContent = '฿' + fmtBaht(s.revenue.vip);
+    $('revNormal').textContent = '฿' + fmtBaht(s.revenue.normal);
+    $('vipDays').textContent = s.revenue.vip_days;
+    $('normalDays').textContent = s.revenue.normal_days;
+
+    // floor chart
+    if (chartFloor) chartFloor.destroy();
+    chartFloor = new Chart($('chartFloor'), {
+      type: 'bar',
+      data: {
+        labels: ['ชั้น 1', 'ชั้น 2', 'ชั้น 3'],
+        datasets: [{
+          label: 'จำนวนการจอง',
+          data: [s.byFloor[1] || 0, s.byFloor[2] || 0, s.byFloor[3] || 0],
+          backgroundColor: ['#06c755', '#1f6fb2', '#ff9800']
+        }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // month chart
+    if (chartMonth) chartMonth.destroy();
+    const months = s.byMonth.map(m => m.month);
+    const monthCounts = s.byMonth.map(m => m.count);
+    let maxM = monthCounts.indexOf(Math.max(...monthCounts));
+    let minM = monthCounts.indexOf(Math.min(...monthCounts));
+    const colors = monthCounts.map((_, i) => i === maxM ? '#06c755' : (i === minM ? '#dd3344' : '#888'));
+    chartMonth = new Chart($('chartMonth'), {
+      type: 'bar',
+      data: { labels: months, datasets: [{ label: 'การจอง', data: monthCounts, backgroundColor: colors }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // by room (text list)
+    const renderRoomList = (id, arr) => {
+      const wrap = $(id);
+      wrap.innerHTML = '';
+      if (!arr.length) { wrap.innerHTML = '<div class="muted">ไม่มีข้อมูล</div>'; return; }
+      arr.forEach(r => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #eee';
+        row.innerHTML = `<span>ห้อง ${r.room_id} ${r.is_vip ? '<span class="pill pill-vip">VIP</span>' : ''}</span><b>${r.count}</b>`;
+        wrap.appendChild(row);
+      });
+    };
+    renderRoomList('byRoomList', s.byRoom);
+    renderRoomList('leastList', s.leastUsedRooms);
+
+    // dept chart
+    if (chartDept) chartDept.destroy();
+    chartDept = new Chart($('chartDept'), {
+      type: 'bar',
+      data: {
+        labels: s.byDept.map(d => d.department),
+        datasets: [{ label: 'จำนวนคนไข้', data: s.byDept.map(d => d.count), backgroundColor: '#1f6fb2' }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      }
+    });
+  }
+
+  start();
+</script>
+<style>
+  .bignum { font-size: 28px; font-weight: 700; }
+</style>
+</body>
+</html>

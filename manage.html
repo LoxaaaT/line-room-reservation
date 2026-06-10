@@ -16,8 +16,9 @@
   <div id="loader" class="loader">กำลังโหลด...</div>
 
   <div id="content" style="display:none">
-    <div class="row" style="margin-bottom:14px">
-      <button class="btn-secondary" onclick="location.href='/dashboard'">📊 ดูภาพรวมทั้งตึก</button>
+    <div class="row" style="margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="location.href='/dashboard'">🏥 ภาพรวมห้อง</button>
+      <button class="btn-secondary" onclick="location.href='/stats'">📊 สถิติ</button>
       <button id="adminBtn" class="btn-secondary" style="display:none" onclick="location.href='/admin'">⚙️ จัดการสิทธิ์</button>
     </div>
 
@@ -43,6 +44,8 @@
 
     <label>จำนวนวัน</label>
     <input id="assignDays" type="number" min="1" value="1">
+
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="assignOpen" onchange="toggleOpen()"> ยังไม่ระบุวันออก (ค้างห้องจนกว่า checkout)</label>
 
     <p class="muted" id="assignPreview"></p>
     <div id="assignMsg"></div>
@@ -169,10 +172,11 @@
       inner += '<div style="margin-top:8px">';
       room.queue.forEach(r => {
         const isCurrent = room.current && room.current.request_id === r.request_id;
+        const outLabel = r.check_out_date ? thaiDate(r.check_out_date) : '<i>ไม่ระบุวันออก</i>';
         inner += `<div class="qrow ${isCurrent ? 'qcurrent' : ''}">
             <span class="qno">#${r.queue_no || '-'}</span>
             <span class="qbody"><b>${r.patient_name}</b><br>
-              <span class="muted">${thaiDate(r.check_in_date)} → ${thaiDate(r.check_out_date)} · ${r.department}</span></span>
+              <span class="muted">${thaiDate(r.check_in_date)} → ${outLabel} · ${r.department}</span></span>
           </div>`;
       });
       inner += '</div>';
@@ -182,7 +186,6 @@
     div.innerHTML = inner;
 
     if (canManage) {
-      // discharge/edit buttons for each assigned patient
       room.queue.forEach(r => {
         const row = document.createElement('div');
         row.className = 'row';
@@ -191,12 +194,27 @@
         editBtn.className = 'btn-secondary';
         editBtn.textContent = 'แก้ #' + (r.queue_no || '');
         editBtn.onclick = () => openAssign(r, true);
-        const disBtn = document.createElement('button');
-        disBtn.className = 'btn-danger';
-        disBtn.textContent = 'จำหน่าย';
-        disBtn.onclick = () => onDischarge(r);
         row.appendChild(editBtn);
-        row.appendChild(disBtn);
+
+        if (!r.check_out_date) {
+          // open-ended: ปุ่มกำหนดวันออก + ออกทันที (แทนปุ่มจำหน่ายธรรมดา)
+          const setOutBtn = document.createElement('button');
+          setOutBtn.className = 'btn-secondary';
+          setOutBtn.textContent = 'กำหนดวันออก';
+          setOutBtn.onclick = () => onSetCheckout(r);
+          const nowBtn = document.createElement('button');
+          nowBtn.className = 'btn-danger';
+          nowBtn.textContent = 'ออกทันที';
+          nowBtn.onclick = () => onCheckoutNow(r);
+          row.appendChild(setOutBtn);
+          row.appendChild(nowBtn);
+        } else {
+          const disBtn = document.createElement('button');
+          disBtn.className = 'btn-danger';
+          disBtn.textContent = 'จำหน่าย';
+          disBtn.onclick = () => onDischarge(r);
+          row.appendChild(disBtn);
+        }
         div.appendChild(row);
       });
     }
@@ -235,7 +253,10 @@
 
     if (isEdit && req.room_id) sel.value = req.room_id;
     $('assignDate').value = isEdit && req.check_in_date ? req.check_in_date : (DATA.today || todayStr_());
-    $('assignDays').value = isEdit ? daysBetween_(req.check_in_date, req.check_out_date) : 1;
+    const isOpenExisting = isEdit && !req.check_out_date;
+    $('assignOpen').checked = isOpenExisting;
+    $('assignDays').disabled = isOpenExisting;
+    $('assignDays').value = (isEdit && req.check_out_date) ? daysBetween_(req.check_in_date, req.check_out_date) : 1;
     updatePreview();
     show($('assignOverlay'), true);
   }
@@ -245,7 +266,11 @@
   function updatePreview() {
     const start = $('assignDate').value;
     const days = Number($('assignDays').value);
-    if (start && days >= 1) {
+    const isOpen = $('assignOpen').checked;
+    if (!start) { $('assignPreview').textContent = ''; return; }
+    if (isOpen) {
+      $('assignPreview').textContent = 'ช่วงพัก: ' + thaiDate(start) + ' → ไม่ระบุวันออก (ห้องล็อกจนกว่าจะกด checkout)';
+    } else if (days >= 1) {
       const out = addDaysStr_(start, days);
       $('assignPreview').textContent = 'ช่วงพัก: ' + thaiDate(start) + ' → ' + thaiDate(out) + ' (ปล่อยห้อง ' + thaiDate(out) + ')';
     } else {
@@ -253,17 +278,29 @@
     }
   }
 
+  function toggleOpen() {
+    const isOpen = $('assignOpen').checked;
+    $('assignDays').disabled = isOpen;
+    updatePreview();
+  }
+
   async function doAssign() {
     $('assignMsg').innerHTML = '';
+    const isOpen = $('assignOpen').checked;
     const payload = {
       lineUserId: LIFF_USER.userId,
       requestId: editingRequest.request_id,
       roomId: $('assignRoom').value,
       startDate: $('assignDate').value,
-      days: Number($('assignDays').value)
+      days: isOpen ? 0 : Number($('assignDays').value),
+      open: isOpen
     };
-    if (!payload.roomId || !payload.startDate || !payload.days) {
-      $('assignMsg').appendChild(alertBox('กรุณากรอกห้อง วันเข้า และจำนวนวันให้ครบ'));
+    if (!payload.roomId || !payload.startDate) {
+      $('assignMsg').appendChild(alertBox('กรุณากรอกห้อง และวันเข้าให้ครบ'));
+      return;
+    }
+    if (!isOpen && !payload.days) {
+      $('assignMsg').appendChild(alertBox('กรุณากรอกจำนวนวัน หรือติ๊ก "ยังไม่ระบุวันออก"'));
       return;
     }
     $('assignBtn').disabled = true;
@@ -285,6 +322,26 @@
   async function onDischarge(r) {
     if (!confirm('ยืนยันจำหน่ายคนไข้ ' + r.patient_name + ' ออกจากห้อง ' + r.room_id + ' ?')) return;
     const res = await rpc('discharge', { requestId: r.request_id, lineUserId: LIFF_USER.userId });
+    if (res.ok) load();
+    else alert('ผิดพลาด: ' + res.error);
+  }
+
+  async function onSetCheckout(r) {
+    const def = todayStr_();
+    const input = prompt('กำหนดวันออกของ ' + r.patient_name + '\n(yyyy-mm-dd) — ระบบจะ auto-discharge เมื่อถึงวัน', def);
+    if (!input) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+      alert('รูปแบบวันที่ผิด ต้องเป็น yyyy-mm-dd');
+      return;
+    }
+    const res = await rpc('setCheckout', { requestId: r.request_id, lineUserId: LIFF_USER.userId, checkOutDate: input });
+    if (res.ok) load();
+    else alert('ผิดพลาด: ' + res.error);
+  }
+
+  async function onCheckoutNow(r) {
+    if (!confirm('Checkout ' + r.patient_name + ' ทันที (วันออก = วันนี้) ?')) return;
+    const res = await rpc('checkoutNow', { requestId: r.request_id, lineUserId: LIFF_USER.userId });
     if (res.ok) load();
     else alert('ผิดพลาด: ' + res.error);
   }

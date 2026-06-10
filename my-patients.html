@@ -77,7 +77,7 @@
         <div><b>ห้อง:</b> ${r.room_id}${typePill} (ชั้น ${r.floor}) · ${price.toLocaleString()} บ./วัน</div>
         <div><b>คิวในห้อง:</b> ลำดับ ${r.queue_no || '-'}</div>
         <div><b>วันเข้า:</b> ${thaiDate(r.check_in_date, true)}</div>
-        <div><b>กำหนดออก:</b> ${thaiDate(r.check_out_date, true)}</div>`;
+        <div><b>กำหนดออก:</b> ${r.check_out_date ? thaiDate(r.check_out_date, true) : '<i>ยังไม่ระบุ</i>'}</div>`;
     }
 
     div.innerHTML = `
